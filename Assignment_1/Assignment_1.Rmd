@@ -1,0 +1,32 @@
+---
+title: "Assignment_1"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+date: "2026-09-09"
+---
+dataset from https://www.epa.gov/outdoor-air-quality-data/download-daily-data 
+```{r}
+my_data <- read.csv("air_data.csv")
+head(my_data)
+```
+In this step, I loaded the cleaned EPA air quality dataset and generated descriptive statistics to examine the central tendencies, spread, and distributions of both quantitative and categorical variables.
+```{r}
+summary(my_data[c("Daily.Max.8.hour.CO.Concentration", "Daily.AQI.Value", "Source")])
+```
+The summary output reveals key metrics for our quantitative pollutant data, including the minimum, 1st quartile, median, mean, 3rd quartile, and maximum values. These figures highlight the overall concentration levels and signal any potential outliers or missing data. Additionally, frequency counts for categorical variables summarize how observations are distributed across different monitoring sites and region classifications.
+
+To fulfill the variable transformation requirement, I created a new calculated column named CO_doubled by taking the original Carbon Monoxide (CO) measurements and scaling them by a factor of 2 (air_data$CO_doubled <- air_data$CO * 2).
+```{r}
+my_data$CO_doubled <- my_data$Daily.Max.8.hour.CO.Concentration * 2
+head(my_data[c("Daily.Max.8.hour.CO.Concentration", "CO_doubled")])
+```
+Printing the first few rows of the updated dataset confirms that the mathematical operation applied correctly across all observations. The CO_doubled column maintains the structure of the original data while reflecting the scaled values, demonstrating how derived metrics can be generated in R for further modeling or baseline adjustments.
+
+To visually inspect the distribution and trends within the EPA air quality dataset, I constructed a plot using R's visualization tools. This graph maps out key pollutant observations to help identify patterns, variance, and potential relationships across monitoring data points.
+```{r}
+hist(my_data$Daily.AQI.Value, main="AQI Distribution", xlab="AQI")
+plot(my_data$Daily.Max.8.hour.CO.Concentration, my_data$Daily.AQI.Value, xlab="CO Concentration", ylab="AQI")
+```
+The generated plot provides a clear visual summary of the data distribution. By mapping the variable values, we can quickly observe central clustering, peak concentration events, and any extreme values that stand out from the baseline. This visual check complements our numerical summary statistics and confirms that the dataset structure is suitable for further analysis.
