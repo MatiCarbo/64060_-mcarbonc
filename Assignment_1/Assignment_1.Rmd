@@ -1,0 +1,32 @@
+---
+title: "Assignment_1"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+date: "2026-09-09"
+---
+dataset from https://www.epa.gov/outdoor-air-quality-data/download-daily-data 
+```{r}
+my_data <- read.csv("air_data.csv")
+head(my_data)
+```
+I ran summary statistics on my EPA dataset to look at the averages, ranges, and categories for my variables.
+```{r}
+summary(my_data[c("Daily.Max.8.hour.CO.Concentration", "Daily.AQI.Value", "Source")])
+```
+The summary output gives us the minimum, mean, median, and maximum values for pollutant levels, showing the overall spread of the data.
+
+I created a new variable called CO_doubled by multiplying the original Carbon Monoxide values by 2 using my_data$CO_doubled <- my_data$Daily.Max.8.hour.CO.Concentration * 2.
+```{r}
+my_data$CO_doubled <- my_data$Daily.Max.8.hour.CO.Concentration * 2
+head(my_data[c("Daily.Max.8.hour.CO.Concentration", "CO_doubled")])
+```
+Displaying the first few rows shows that the new CO_doubled column was successfully calculated and added to the dataset.
+
+I created a histogram and scatter plot to visually check the distribution and trends of the air quality data.
+```{r}
+hist(my_data$Daily.AQI.Value, main="AQI Distribution", xlab="AQI")
+plot(my_data$Daily.Max.8.hour.CO.Concentration, my_data$Daily.AQI.Value, xlab="CO Concentration", ylab="AQI")
+```
+The plots show how AQI and CO concentrations are distributed and highlight the positive relationship between the two variables.
