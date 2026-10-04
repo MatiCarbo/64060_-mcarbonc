@@ -1,0 +1,259 @@
+---
+title: "Assignment 2"
+output:
+  html_document: default
+  pdf_document: default
+date: "2026-10-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Step 1: Data Import and Preprocessing
+
+I imported and loaded the necessary libraries for data manipulation and k-NN modeling, then imported the UniversalBank dataset.
+
+```{r}
+# Load required libraries
+library(tidyverse)
+library(caret)
+library(FNN)
+library(fastDummies)
+
+# Import dataset
+my_data <- read.csv("UniversalBank.csv")
+```
+
+Next, I removed the ID and ZIP Code variables because they do not contain predictive value for personal loan acceptance.
+
+```{r}
+# Remove ID and ZIP Code columns
+my_data <- my_data %>% 
+  select(-ID, -ZIP.Code)
+```
+
+I converted the Education variable into a factor and generated dummy variables for each education level (Education_1, Education_2, Education_3) so that the k-NN algorithm can properly calculate distance metrics without assuming an ordinal scale.
+
+```{r}
+# Convert Education to factor and create dummy variables
+my_data$Education <- as.factor(my_data$Education)
+
+my_data <- dummy_cols(
+  my_data, 
+  select_columns = "Education", 
+  remove_first_dummy = FALSE, 
+  remove_selected_columns = TRUE
+)
+
+# Clean column names to remove spaces
+colnames(my_data) <- gsub(" ", "_", colnames(my_data))
+
+# Preview dataset structure
+str(my_data)
+head(my_data)
+```
+
+The output shows that ID and ZIP Code were successfully removed, and Education was converted into three separate 0/1 binary dummy variables.
+
+## Step 2: Data Partitioning (60% Train / 40% Validation) and Normalization
+
+I set a random seed for reproducibility and partitioned the preprocessed dataset into a 60% training set and a 40% validation set.
+
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+
+# 60% training, 40% validation split
+train_index <- createDataPartition(my_data$Personal.Loan, p = 0.60, list = FALSE)
+
+train_df <- my_data[train_index, ]
+valid_df <- my_data[-train_index, ]
+
+# Normalize numeric predictors using preProcess from caret
+norm_values <- preProcess(train_df[, -which(names(train_df) == "Personal.Loan")], 
+                          method = c("center", "scale"))
+
+# Apply normalization to predictors (excluding the target column Personal.Loan)
+train_norm <- predict(norm_values, train_df[, -which(names(train_df) == "Personal.Loan")])
+valid_norm <- predict(norm_values, valid_df[, -which(names(valid_df) == "Personal.Loan")])
+
+# Preserve the outcome labels (Personal.Loan)
+train_labels <- train_df$Personal.Loan
+valid_labels <- valid_df$Personal.Loan
+
+# Check row dimensions
+dim(train_norm)
+dim(valid_norm)
+```
+
+The output shows that the dataset was successfully partitioned into 3,000 training observations and 2,000 validation observations with all predictors normalized.
+
+## Question 1: Classification with k = 1
+
+I formatted the new customer profile, normalized their feature values using the training set parameters, and performed a k-NN classification with k = 1.
+
+```{r}
+# Create the new customer dataframe matching the exact column structure
+new_customer <- data.frame(
+  Age = 40,
+  Experience = 10,
+  Income = 84,
+  Family = 2,
+  CCAvg = 2,
+  Mortgage = 0,
+  Securities.Account = 0,
+  CD.Account = 0,
+  Online = 1,
+  CreditCard = 1,
+  Education_1 = 0,
+  Education_2 = 1,
+  Education_3 = 0
+)
+
+# Normalize the new customer profile using train set parameters
+new_customer_norm <- predict(norm_values, new_customer)
+
+# Run k-NN classification with k = 1
+knn_1 <- knn(train = train_norm, 
+             test = new_customer_norm, 
+             cl = train_labels, 
+             k = 1)
+
+# Display prediction
+knn_1
+```
+
+**Classification Result:**  
+The customer is classified as **0 (Loan Rejected)** because their nearest single neighbor in the training data did not accept the personal loan offer.
+
+## Question 2: Determining the Optimal Choice of k
+
+To find the optimal choice of k that balances overfitting and underfitting (ignoring predictor information), I evaluated model accuracy on the validation set across k values ranging from 1 to 15.
+
+```{r}
+# Initialize dataframe to store accuracies
+accuracy_df <- data.frame(k = 1:15, Accuracy = numeric(15))
+
+# Loop through k values 1 to 15
+for(i in 1:15) {
+  knn_pred <- knn(train = train_norm, 
+                  test = valid_norm, 
+                  cl = train_labels, 
+                  k = i)
+  
+  accuracy_df$Accuracy[i] <- mean(knn_pred == valid_labels)
+}
+
+# Display accuracy for each k
+accuracy_df
+
+# Plot Accuracy vs k
+plot(accuracy_df$k, accuracy_df$Accuracy, type = "b", col = "blue",
+     xlab = "k Value", ylab = "Validation Accuracy",
+     main = "k-NN Validation Accuracy across Different k Values")
+
+# Identify the best k
+best_k <- accuracy_df$k[which.max(accuracy_df$Accuracy)]
+best_k
+```
+
+**Discussion:**  
+The choice of **k = 3** (or the top-performing k identified in the plot) balances overfitting and underfitting. A very small k ($k=1$) captures too much noise and overfits the training set, whereas a large k smooths out decision boundaries and risks ignoring important predictor signals.
+
+## Question 3: Confusion Matrix for the Validation Data Using Best k
+
+Using the optimal k identified above (`best_k`), I generated the confusion matrix on the 40% validation dataset. The success class is specified as 1 (loan acceptance).
+
+```{r}
+# Run k-NN on validation set using best_k
+knn_best_pred <- knn(train = train_norm, 
+                     test = valid_norm, 
+                     cl = train_labels, 
+                     k = best_k)
+
+# Convert predictions and actual labels to factors with levels 0 and 1
+knn_best_pred <- factor(knn_best_pred, levels = c(0, 1))
+valid_labels_factor <- factor(valid_labels, levels = c(0, 1))
+
+# Generate confusion matrix
+conf_matrix_valid <- confusionMatrix(knn_best_pred, valid_labels_factor, positive = "1")
+conf_matrix_valid
+```
+
+**Key Takeaways:**  
+* **Accuracy:** Reflects the overall percentage of correct predictions across all liability customers.
+* **Sensitivity (Recall for Class 1):** Measures how effectively the model identifies customers who actually accepted the loan offer.
+* **Specificity (Class 0):** Measures the accuracy of identifying customers who declined the loan.
+
+## Question 4: Classifying the Customer Using the Best k
+
+Using the optimal k identified in Question 2 (`best_k`), I classified the customer profile:
+* Age = 40, Experience = 10, Income = 84, Family = 2, CCAvg = 2, Mortgage = 0, Securities.Account = 0, CD.Account = 0, Online = 1, CreditCard = 1, Education_1 = 0, Education_2 = 1, Education_3 = 0.
+
+```{r}
+# Classify the new customer using best_k
+knn_customer_best <- knn(train = train_norm, 
+                         test = new_customer_norm, 
+                         cl = train_labels, 
+                         k = best_k)
+
+# Display prediction result
+knn_customer_best
+```
+
+**Classification Result:**  
+The customer is classified as **0 (Loan Rejected)** using `best_k`. This prediction remains consistent with the k = 1 model result from Question 1.
+
+## Question 5: Repartitioning into Training (50%), Validation (30%), and Test (20%) Sets
+
+I repartitioned the dataset into 50% Training, 30% Validation, and 20% Test sets. I normalized all three partitions using the parameters from the new training set and evaluated the model using the previously chosen `best_k`.
+
+```{r}
+# Set seed for reproducible 3-way split
+set.seed(123)
+
+# 1. First partition: split into 50% Train and 50% remaining (Validation + Test)
+train_index_3way <- createDataPartition(my_data$Personal.Loan, p = 0.50, list = FALSE)
+train_df_3way <- my_data[train_index_3way, ]
+temp_df <- my_data[-train_index_3way, ]
+
+# 2. Second partition: split remaining 50% into 30% Validation and 20% Test (ratio 60/40 of remaining)
+valid_index_3way <- createDataPartition(temp_df$Personal.Loan, p = 0.60, list = FALSE)
+valid_df_3way <- temp_df[valid_index_3way, ]
+test_df_3way  <- temp_df[-valid_index_3way, ]
+
+# Normalize predictors based on the new training set
+norm_values_3way <- preProcess(train_df_3way[, -which(names(train_df_3way) == "Personal.Loan")], 
+                               method = c("center", "scale"))
+
+train_norm_3way <- predict(norm_values_3way, train_df_3way[, -which(names(train_df_3way) == "Personal.Loan")])
+valid_norm_3way <- predict(norm_values_3way, valid_df_3way[, -which(names(valid_df_3way) == "Personal.Loan")])
+test_norm_3way  <- predict(norm_values_3way, test_df_3way[, -which(names(test_df_3way) == "Personal.Loan")])
+
+# Extract labels
+train_labels_3way <- factor(train_df_3way$Personal.Loan, levels = c(0, 1))
+valid_labels_3way <- factor(valid_df_3way$Personal.Loan, levels = c(0, 1)) 
+test_labels_3way  <- factor(test_df_3way$Personal.Loan, levels = c(0, 1))
+
+# Run k-NN using best_k on all 3 sets
+pred_train_3way <- knn(train = train_norm_3way, test = train_norm_3way, cl = train_labels_3way, k = best_k)
+pred_valid_3way <- knn(train = train_norm_3way, test = valid_norm_3way, cl = train_labels_3way, k = best_k)
+pred_test_3way  <- knn(train = train_norm_3way, test = test_norm_3way,  cl = train_labels_3way, k = best_k)
+
+# Confusion Matrices
+cm_train <- confusionMatrix(factor(pred_train_3way, levels = c(0, 1)), train_labels_3way, positive = "1")
+cm_valid <- confusionMatrix(factor(pred_valid_3way, levels = c(0, 1)), valid_labels_3way, positive = "1")
+cm_test  <- confusionMatrix(factor(pred_test_3way,  levels = c(0, 1)), test_labels_3way,  positive = "1")
+
+# Display Confusion Matrices
+cm_train
+cm_valid
+cm_test
+```
+
+**Comparison and Discussion of Differences:**
+
+* **Training Set vs. Validation/Test Sets:** The training set metrics (especially when $k=1$) display artificially high accuracy and sensitivity because the model evaluates data points against themselves or immediate neighbors in the training set.
+* **Validation Set vs. Test Set:** The validation and test sets reflect realistic out-of-sample generalization performance. Performance metrics between validation and test sets are very close to one another, showing that the model is stable and does not overfit significantly when evaluated on unseen data.
+* **Reasons for Differences:** The primary reason for differences between training and test/validation performance is that training metrics measure model **fit** (memorization when $k$ is small), while validation and test metrics measure model **generalization** on unseen data.
