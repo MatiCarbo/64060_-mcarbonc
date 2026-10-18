@@ -1,0 +1,183 @@
+---
+title: "Assignment 3"
+author: Matilde Carboncini 
+output: html_document
+date: "2026-10-18"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Load required libraries
+library(tidyverse)
+library(caret)
+library(e1071)
+library(reshape2)
+
+# Import dataset
+bank_data <- read.csv("UniversalBank.csv")
+
+# Select relevant columns and convert to factors
+bank_data <- bank_data %>%
+  select(Personal.Loan, Online, CreditCard) %>%
+  mutate(
+    Personal.Loan = factor(Personal.Loan, levels = c(0, 1)),
+    Online = factor(Online, levels = c(0, 1)),
+    CreditCard = factor(CreditCard, levels = c(0, 1))
+  )
+
+# Set seed for reproducibility
+set.seed(123)
+
+# 60% training, 40% validation split
+train_index <- createDataPartition(bank_data$Personal.Loan, p = 0.60, list = FALSE)
+
+train_df <- bank_data[train_index, ]
+valid_df <- bank_data[-train_index, ]
+
+# Check dimensions
+dim(train_df)
+dim(valid_df)
+```
+
+
+## Part A: 3-Way Pivot Table
+
+I generated a pivot table using the training data with `Online` as columns, `CreditCard` as primary rows, and `Personal.Loan` as secondary rows to show exact customer counts.
+
+```{r}
+# Option 1: Using table() function
+pivot_table_3way <- table(CreditCard = train_df$CreditCard, 
+                          Personal.Loan = train_df$Personal.Loan, 
+                          Online = train_df$Online)
+
+# Display table
+pivot_table_3way
+
+# Option 2: Using ftable() for a clean 3-way layout
+ftable(pivot_table_3way)
+```
+
+## Part B: Probability of Loan Acceptance Given CC = 1 and Online = 1
+
+Using the 3-way pivot table generated in Part A, I extracted the count of customers who have `CreditCard = 1` and `Online = 1`, and calculated the proportion of those customers who accepted the personal loan (`Personal.Loan = 1`).
+
+```{r}
+# Extract counts from pivot table for CC = 1 and Online = 1
+loan_accept_count <- pivot_table_3way["1", "1", "1"]  # CC=1, Loan=1, Online=1
+total_cc_online_count <- sum(pivot_table_3way["1", , "1"]) # Total CC=1, Online=1
+
+# Compute conditional probability
+prob_pivot <- loan_accept_count / total_cc_online_count
+
+# Display counts and resulting probability
+cat("Loan Acceptors (CC=1, Online=1):", loan_accept_count, "\n")
+cat("Total Customers (CC=1, Online=1):", total_cc_online_count, "\n")
+cat("P(Loan = 1 | CC = 1, Online = 1) from Pivot Table:", round(prob_pivot, 4), "\n")
+```
+
+## Part C: Separate Pivot Tables for Online and Credit Card
+
+I created two separate pivot tables using the training data to show loan status (`Personal.Loan`) against `Online` usage and `CreditCard` ownership individually.
+
+```{r}
+# Pivot Table 1: Personal.Loan (rows) vs. Online (columns)
+pivot_online <- table(Personal.Loan = train_df$Personal.Loan, Online = train_df$Online)
+cat("--- Pivot Table 1: Personal Loan vs. Online ---\n")
+pivot_online
+
+# Pivot Table 2: Personal.Loan (rows) vs. CreditCard (columns)
+pivot_cc <- table(Personal.Loan = train_df$Personal.Loan, CreditCard = train_df$CreditCard)
+cat("\n--- Pivot Table 2: Personal Loan vs. CreditCard ---\n")
+pivot_cc
+```
+
+## Part D: Compute Individual Probabilities
+
+Using the 2-way pivot tables from Part C, I computed the conditional and prior probabilities required for the Naive Bayes formula.
+
+```{r}
+# Total counts from training data
+n_loan_1 <- sum(train_df$Personal.Loan == "1")
+n_loan_0 <- sum(train_df$Personal.Loan == "0")
+n_total  <- nrow(train_df)
+
+# i. P(CC = 1 | Loan = 1)
+p_cc1_given_loan1 <- pivot_cc["1", "1"] / n_loan_1
+
+# ii. P(Online = 1 | Loan = 1)
+p_online1_given_loan1 <- pivot_online["1", "1"] / n_loan_1
+
+# iii. P(Loan = 1)
+p_loan1 <- n_loan_1 / n_total
+
+# iv. P(CC = 1 | Loan = 0)
+p_cc1_given_loan0 <- pivot_cc["0", "1"] / n_loan_0
+
+# v. P(Online = 1 | Loan = 0)
+p_online1_given_loan0 <- pivot_online["0", "1"] / n_loan_0
+
+# vi. P(Loan = 0)
+p_loan0 <- n_loan_0 / n_total
+
+# Output results nicely formatted
+cat("i.   P(CC = 1 | Loan = 1)    =", round(p_cc1_given_loan1, 4), "\n")
+cat("ii.  P(Online = 1 | Loan = 1) =", round(p_online1_given_loan1, 4), "\n")
+cat("iii. P(Loan = 1)             =", round(p_loan1, 4), "\n")
+cat("iv.  P(CC = 1 | Loan = 0)    =", round(p_cc1_given_loan0, 4), "\n")
+cat("v.   P(Online = 1 | Loan = 0) =", round(p_online1_given_loan0, 4), "\n")
+cat("vi.  P(Loan = 0)             =", round(p_loan0, 4), "\n")
+```
+
+## Part E: Compute Naive Bayes Probability P(Loan = 1 | CC = 1, Online = 1)
+
+I used the conditional and prior probabilities calculated in Part D to compute the Naive Bayes probability of loan acceptance given `CC = 1` and `Online = 1`.
+
+```{r}
+# Numerator for Loan = 1
+num_loan1 <- p_cc1_given_loan1 * p_online1_given_loan1 * p_loan1
+
+# Numerator for Loan = 0
+num_loan0 <- p_cc1_given_loan0 * p_online1_given_loan0 * p_loan0
+
+# Naive Bayes Probability
+p_nb <- num_loan1 / (num_loan1 + num_loan0)
+
+cat("Calculated Naive Bayes Probability P(Loan = 1 | CC = 1, Online = 1):", round(p_nb, 4), "\n")
+```
+
+## Part F: Comparison of Pivot Table Probability vs. Naive Bayes Estimate
+
+* **Pivot Table Probability (Part B):** `r round(prob_pivot, 4)` (`r round(prob_pivot * 100, 2)`%)
+* **Naive Bayes Probability (Part E):** `r round(p_nb, 4)` (`r round(p_nb * 100, 2)`%)
+
+**Discussion & Comparison:**  
+The pivot table estimate from Part B is a direct empirical calculation from the joint distribution of the training data without assuming independence between predictors. The Naive Bayes probability from Part E relies on the conditional independence assumption—that `CreditCard` ownership and `Online` banking activity are conditionally independent given `Personal.Loan` status.
+
+* **Which is more accurate?** The pivot table probability (`r round(prob_pivot, 4)`) is exact for this training sample because it does not make any independence assumptions. However, when working with higher-dimensional data or sparse combinations, Naive Bayes is preferred because pivot tables suffer from the curse of dimensionality and empty cell counts.
+
+---
+
+## Part G: Naive Bayes Model Implementation with `e1071`
+
+### 1. Entries Needed for Computation
+To compute $P(\text{Loan} = 1 \mid \text{CC} = 1, \text{Online} = 1)$, we need the prior probability $P(\text{Loan} = 1)$ along with the conditional probabilities $P(\text{CC} = 1 \mid \text{Loan} = 1)$ and $P(\text{Online} = 1 \mid \text{Loan} = 1)$ (and their counterparts for $\text{Loan} = 0$).
+
+### 2. Fit Naive Bayes Model
+```{r}
+# Fit Naive Bayes model on training data
+nb_model <- naiveBayes(Personal.Loan ~ CreditCard + Online, data = train_df, laplace = 0)
+
+# Print model parameters
+nb_model
+
+# Predict probability for a customer with CC = 1 and Online = 1
+new_customer_data <- data.frame(CreditCard = factor("1", levels = c("0", "1")),
+                                Online = factor("1", levels = c("0", "1")))
+
+# Extract predicted conditional probabilities
+nb_pred_prob <- predict(nb_model, newdata = new_customer_data, type = "raw")
+nb_pred_prob
+```
