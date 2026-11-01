@@ -1,0 +1,88 @@
+---
+title: "Assignment 4 ML - Matilde Carboncini"
+author: Matilde Carboncini
+output: html_document
+date: "2026-11-01"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+df <- read.csv("Pharmaceuticals.csv")
+
+str(df)
+head(df)
+
+rownames(df) <- df$Name 
+
+df_num <- df[, 3:11] 
+
+df_scaled <- scale(df_num)
+
+head(df_scaled)
+```
+
+```{r}
+set.seed(123)
+
+wss <- vector("numeric", length = 10)
+
+for (k in 1:10) {
+  km <- kmeans(df_scaled, centers = k, nstart = 25)
+  wss[k] <- km$tot.withinss
+}
+
+plot(1:10, wss, type = "b", pch = 19, frame = FALSE,
+     xlab = "Number of Clusters (k)",
+     ylab = "Total Within-Cluster Sum of Squares",
+     main = "Elbow Method for Optimal k")
+```
+
+```{r}
+set.seed(123)
+
+km_res <- kmeans(df_scaled, centers = 5, nstart = 25)
+
+df$Cluster <- as.factor(km_res$cluster)
+
+table(df$Cluster)
+
+aggregate(df[, 3:11], by = list(Cluster = df$Cluster), FUN = mean)
+```
+
+## Part (a): Justification of Choices Made
+- **Variable Selection:** Only numerical variables (1 to 9) were used to compute distances so non-financial categorical data would not distort Euclidean calculations.
+- **Data Scaling:** Variables were standardized using `scale()` ($Z$-score normalization) to give every feature equal weight (mean = 0, std = 1). This prevents variables with large scales (like Market Cap in billions) from dominating small variables (like Asset Turnover).
+- **Algorithm Choice:** $k$-Means with `nstart = 25` was selected to ensure stable centroids across multiple initializations.
+- **Number of Clusters ($k=5$):** Based on the Elbow plot, the total within-cluster sum of squares drops sharply up to $k=2$ and flattens around $k=4$ to $k=5$, providing an optimal balance between compactness and interpretability.
+
+## Part (b): Cluster Interpretation (Numerical Variables)
+- **Cluster 1:** Established Large-Cap / Stable Performers — High average market cap ($55.8B), low volatility ($\text{Beta} = 0.41$), low leverage (0.37), and strong profitability ($\text{ROE} = 28.7\%$).
+- **Cluster 2:** High-Risk / High-Leverage Small-Caps — Smallest average market cap ($6.6B$), highest market risk ($\text{Beta} = 0.87$), very high debt ($\text{Leverage} = 1.65$), and low return on assets ($\text{ROA} = 4.17\%$).
+- **Cluster 3:** High-Valuation Growth — Moderate market cap ($31.9B$) defined by an extremely high P/E ratio (69.5) and solid revenue growth ($12.1\%$).
+- **Cluster 4:** Market Leaders — Massive average market cap ($157.0B$), outstanding profitability ($\text{ROE} = 44.4\%$), top asset efficiency (0.95), and strong revenue growth ($18.5\%$).
+- **Cluster 5:** Rapid Growth Challengers — Mid-to-small market cap ($13.1B$) with the highest estimated revenue growth ($30.1\%$) but lower asset turnover (0.43).
+
+```{r}
+# Inspect non-numerical variables across clusters (Variables 10 to 12)
+table(df$Cluster, df$Median_Recommendation)
+table(df$Cluster, df$Location)
+table(df$Cluster, df$Exchange)
+```
+
+## Part (c): Pattern in Non-Numerical Variables
+- **Exchange:** Most firms are listed on the **NYSE** (19 out of 21 firms across all clusters), with AMEX and NASDAQ only appearing once in Cluster 2. Therefore, stock exchange listing shows **no distinct pattern** across clusters.
+- **Location:** The majority of companies across all clusters are based in the **US** (13 firms) and the **UK** (3 firms). Other countries (Canada, France, Germany, Ireland, Switzerland) are scattered across different clusters. Headquarters location does **not** strongly drive or align with the financial clusters.
+- **Median Recommendation:** There is a **slight pattern**:
+  - Higher-performing, large-cap clusters (like Cluster 1 and Cluster 4) skew heavily toward positive recommendations (**Moderate Buy** and **Hold**).
+  - Cluster 1 contains the only **Strong Buy** recommendation.
+  - Higher-risk or lower-profitability clusters (like Cluster 2) lean predominantly toward **Hold**.
+  
+## Part (d): Cluster Names
+- **Cluster 1:** *Established Market Leaders (Stable Buy)* — Large market cap, solid profitability, low volatility, and strong analyst ratings.
+- **Cluster 2:** *High-Risk Small-Caps (Hold / Underperform)* — Small market cap, high debt/leverage, low return on assets, and listed on smaller exchanges.
+- **Cluster 3:** *High-Valuation Growth Firms* — Moderately sized companies trading at extremely high P/E ratios.
+- **Cluster 4:** *Dominant Financial Powerhouses* — Massive market cap, exceptional ROE/ROA efficiency, and high revenue growth.
+- **Cluster 5:** *Rapid Expansion Challengers* — Mid-sized firms with the highest estimated revenue growth but lower asset efficiency.
